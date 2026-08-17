@@ -1,0 +1,397 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Forex Rotation</title>
+<style>
+:root{
+  --plane:#f9f9f7; --surface-1:#fcfcfb;
+  --text-primary:#0b0b0b; --text-secondary:#52514e; --muted:#898781;
+  --grid:#e1e0d9; --axis:#c3c2b7; --border:rgba(11,11,11,0.10); --chip:#efeee9;
+  --mark:#2a78d6; --mark-tail:#86b6ef;
+  --div-pos:#2a78d6; --div-neg:#e34948; --div-mid:#f0efec;
+  --q-lead:rgba(12,163,12,0.07); --q-weak:rgba(250,178,25,0.09);
+  --q-lag:rgba(208,59,59,0.07); --q-imp:rgba(42,120,214,0.07);
+  --warn:#8a5a10; --warn-bg:rgba(250,178,25,0.13);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --plane:#0d0d0d; --surface-1:#1a1a19;
+    --text-primary:#ffffff; --text-secondary:#c3c2b7; --muted:#898781;
+    --grid:#2c2c2a; --axis:#383835; --border:rgba(255,255,255,0.10); --chip:#242422;
+    --mark:#3987e5; --mark-tail:#1c5cab;
+    --div-pos:#3987e5; --div-neg:#e66767; --div-mid:#383835;
+    --q-lead:rgba(12,163,12,0.075); --q-weak:rgba(250,178,25,0.065);
+    --q-lag:rgba(208,59,59,0.075); --q-imp:rgba(57,135,229,0.08);
+    --warn:#f0c266; --warn-bg:rgba(250,178,25,0.10);
+  }
+}
+:root[data-theme="dark"]{
+  --plane:#0d0d0d; --surface-1:#1a1a19;
+  --text-primary:#ffffff; --text-secondary:#c3c2b7; --muted:#898781;
+  --grid:#2c2c2a; --axis:#383835; --border:rgba(255,255,255,0.10); --chip:#242422;
+  --mark:#3987e5; --mark-tail:#1c5cab;
+  --div-pos:#3987e5; --div-neg:#e66767; --div-mid:#383835;
+  --q-lead:rgba(12,163,12,0.075); --q-weak:rgba(250,178,25,0.065);
+  --q-lag:rgba(208,59,59,0.075); --q-imp:rgba(57,135,229,0.08);
+  --warn:#f0c266; --warn-bg:rgba(250,178,25,0.10);
+}
+*{box-sizing:border-box}
+body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif; color:var(--text-primary);
+  background:var(--plane); max-width:1180px; margin:0 auto; padding:28px 16px 64px; line-height:1.5}
+.eyebrow{font-size:.72rem; letter-spacing:.09em; text-transform:uppercase; color:var(--muted); margin:0 0 6px}
+h1{font-size:1.75rem; margin:0 0 6px; letter-spacing:-0.02em}
+h2{font-size:1.05rem; margin:0 0 4px}
+.sub{color:var(--text-secondary); margin:0 0 4px; font-size:.95rem}
+.meta{color:var(--muted); font-size:.8rem; margin:0 0 20px}
+.card{background:var(--surface-1); border:1px solid var(--border); border-radius:12px; padding:16px; margin-bottom:18px}
+.bar{display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin:0 0 14px}
+.seg{display:inline-flex; padding:3px; gap:3px; background:var(--chip); border-radius:10px}
+.seg button{font:inherit; font-size:.85rem; font-weight:600; padding:6px 16px; border-radius:7px;
+  cursor:pointer; background:transparent; color:var(--text-secondary); border:0}
+.seg button[aria-selected="true"]{background:var(--surface-1); color:var(--text-primary); box-shadow:0 1px 3px rgba(0,0,0,.14)}
+#tfseg button[aria-selected="true"]{background:var(--mark); color:#fff}
+.status{font-size:.8rem; color:var(--muted)}
+.chip{font:inherit; font-size:.78rem; padding:5px 11px; border-radius:999px; cursor:pointer;
+  background:var(--chip); color:var(--text-secondary); border:1px solid transparent}
+.chip[aria-pressed="false"]{opacity:.45}
+.chip[aria-pressed="true"].sel{background:var(--mark); color:#fff}
+.chip .n{opacity:.65; margin-left:5px; font-variant-numeric:tabular-nums}
+.hint{font-size:.8rem; color:var(--text-secondary); margin:0 0 12px}
+.heatwrap{display:grid; grid-template-columns:minmax(0,1fr) 300px; gap:22px; align-items:start}
+@media (max-width:900px){ .heatwrap{grid-template-columns:1fr} }
+.scroll{overflow-x:auto}
+table.heat{border-collapse:separate; border-spacing:2px; font-size:.8rem; min-width:520px; width:100%}
+table.heat th{font-weight:600; color:var(--text-secondary); padding:6px 4px; text-align:center}
+table.heat th.row{text-align:right; padding-right:10px}
+table.heat td{text-align:center; padding:9px 4px; border-radius:4px; font-variant-numeric:tabular-nums; cursor:default}
+table.heat td.diag{background:transparent; color:var(--muted)}
+.strength .row{display:grid; grid-template-columns:40px 1fr 62px; align-items:center; gap:8px; margin:5px 0; font-size:.8rem}
+.strength .lab{font-weight:600}
+.strength .val{text-align:right; font-variant-numeric:tabular-nums; color:var(--text-secondary)}
+.strength .track{position:relative; height:16px}
+.strength .zero{position:absolute; left:50%; top:-3px; bottom:-3px; width:1px; background:var(--axis)}
+.strength .fill{position:absolute; top:2px; bottom:2px}
+.strength .fill.pos{left:50%; border-radius:0 4px 4px 0; background:var(--div-pos)}
+.strength .fill.neg{right:50%; border-radius:4px 0 0 4px; background:var(--div-neg)}
+.legend{display:flex; gap:16px; flex-wrap:wrap; font-size:.76rem; color:var(--text-secondary); margin-top:10px; align-items:center}
+.legend i{display:inline-block; width:10px; height:10px; border-radius:50%; background:var(--mark); margin-right:5px; vertical-align:-1px}
+.legend i.hollow{background:transparent; border:1.8px solid var(--mark)}
+.legend .tl{display:inline-block; width:16px; height:2px; background:var(--mark-tail); margin-right:5px; vertical-align:4px}
+.legend .ramp{display:inline-block; width:120px; height:10px; border-radius:3px; vertical-align:-1px; margin:0 6px}
+.filters{display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-bottom:12px}
+.sidenote{background:var(--warn-bg); color:var(--warn); border-radius:8px; padding:8px 12px; font-size:.8rem; margin-bottom:12px}
+.layout{display:grid; grid-template-columns:minmax(0,560px) minmax(0,1fr); gap:20px; align-items:start}
+@media (max-width:940px){ .layout{grid-template-columns:1fr} }
+.plotwrap{position:relative}
+svg{width:100%; height:auto; display:block; overflow:visible}
+.qlabel{font-size:11px; fill:var(--muted); letter-spacing:.05em; text-transform:uppercase}
+.axlabel{font-size:10px; fill:var(--muted); font-variant-numeric:tabular-nums}
+.mlabel{font-size:10.5px; fill:var(--text-secondary); font-weight:600}
+.axtitle{font-size:11px; fill:var(--text-secondary)}
+.tip{position:fixed; pointer-events:none; opacity:0; transition:opacity .1s; z-index:9;
+  background:var(--text-primary); color:var(--plane); font-size:.75rem; padding:6px 9px; border-radius:7px; white-space:nowrap}
+.tablewrap{max-height:560px; overflow:auto}
+table.list{width:100%; border-collapse:collapse; font-size:.8rem}
+table.list th, table.list td{text-align:right; padding:6px 7px; border-bottom:1px solid var(--border); white-space:nowrap}
+table.list th:first-child, table.list td:first-child{text-align:left}
+table.list th{position:sticky; top:0; background:var(--surface-1); cursor:pointer; font-weight:600; color:var(--text-secondary)}
+table.list td.q{text-align:left; color:var(--text-secondary)}
+td.num{font-variant-numeric:tabular-nums}
+.note{font-size:.78rem; color:var(--text-secondary); margin-top:8px; line-height:1.65}
+.note strong{color:var(--text-primary)}
+</style>
+</head>
+<body>
+<p class="eyebrow">G10 currencies &middot; heat map &amp; relative rotation</p>
+<h1>Forex Rotation</h1>
+<p class="sub">The eight majors and all 28 crosses between them &mdash; how each moved,
+and where each sits in its rotation &mdash; on 4H and Daily candles.</p>
+<p class="meta">Completed candles only &middot; OANDA prices &middot; generated 2026-10-24 04:06 Bangkok (UTC+7)</p>
+
+<div class="bar">
+  <div class="seg" id="tfseg" role="tablist" aria-label="Timeframe"></div>
+  <span class="status" id="status"></span>
+</div>
+
+<section class="card" aria-labelledby="h-heat">
+  <div class="bar" style="justify-content:space-between">
+    <h2 id="h-heat">Heat map</h2>
+    <div class="seg" id="perseg" role="tablist" aria-label="Period"></div>
+  </div>
+  <p class="hint" id="heatdesc"></p>
+  <div class="heatwrap">
+    <div class="scroll"><table class="heat" id="heat"></table></div>
+    <div>
+      <p class="hint" style="margin-bottom:6px"><strong>Currency strength</strong> &mdash; each currency against the
+      other seven (geometric mean), same period.</p>
+      <div class="strength" id="strength"></div>
+    </div>
+  </div>
+  <div class="legend">
+    <span>Down<span class="ramp" id="ramp"></span>Up &nbsp;&middot;&nbsp; scale &plusmn;<span id="rampmax"></span></span>
+  </div>
+</section>
+
+<section class="card" aria-labelledby="h-rrg">
+  <div class="bar" style="justify-content:space-between">
+    <h2 id="h-rrg">Relative rotation</h2>
+    <div class="seg" id="modeseg" role="tablist" aria-label="Measure"></div>
+  </div>
+  <div class="filters" id="ccychips"></div>
+  <div id="sidenote" class="sidenote" style="display:none"></div>
+  <div class="filters">
+    <span id="qchips" style="display:flex; gap:6px; flex-wrap:wrap"></span>
+    <button class="chip" id="lbl" aria-pressed="true">Labels</button>
+  </div>
+  <div class="layout">
+    <div class="plotwrap"><svg id="plot" viewBox="0 0 560 560" role="img" aria-label="Relative rotation graph"></svg></div>
+    <div class="tablewrap"><table class="list"><thead id="thead"></thead><tbody id="tbody"></tbody></table></div>
+  </div>
+  <div class="legend">
+    <span><i></i>Latest completed candle</span>
+    <span id="sideleg" style="display:none"><i class="hollow"></i>Selected currency is the quote leg</span>
+    <span><span class="tl"></span>Prior 2 candles &mdash; tail direction shows rotation</span>
+  </div>
+</section>
+
+<section class="note">
+<p><strong>Why not myfxbook data.</strong> This follows the layout of myfxbook's forex heat map, but
+its prices cannot come from there: every myfxbook page and data feed has answered with a bot challenge
+since early September, the heat map included, and the only price feed it did offer was weekly. The
+prices here are OANDA's, read from TradingView, for the same eight currencies.</p>
+<p><strong>Heat map.</strong> Each cell is the row currency priced in the column currency, as a %
+change over the selected period, so the grid is mirror-imaged across the diagonal. Blue is up, red
+is down, gray is flat; the scale runs to the largest move on screen, and every cell prints its value.
+Currency strength is each currency against the other seven at once &mdash; the geometric mean of its
+seven rates &mdash; which is the right answer to &ldquo;who moved&rdquo;, where a single pair only ever
+says which of two moved more.</p>
+<p><strong>Rotation.</strong> <em>Currencies</em> plots those eight strength indices against the
+equal-weighted basket of all eight. That basket is exactly 1 by construction &mdash; every cross adds
++log rate to one index and &minus;log rate to another &mdash; so there is no benchmark of its own to
+tug the marks, and no weighting to argue about. <em>Pairs</em> plots each cross against that same unit,
+which is simply its own price: Leading means above its recent norm and still climbing. Filter to one
+currency to see its seven pairs; hollow marks are pairs where it is the quote leg, and they rotate
+opposite to its strength. RS-Ratio is 100 + the z-score over 60 bars; RS-Momentum is
+100 + the z-score of its 10-bar change. This is a standard z-score replication of the
+proprietary JdK formulas: quadrant and direction track the original, exact values will not &mdash;
+treat anything within ~0.3 of a boundary as unclassified.</p>
+<p><strong>Completed candles only.</strong> The page refreshes five minutes after each 4H candle
+closes, so the 4H view moves every refresh and the Daily view moves once a day, when the FX day closes
+at 17:00 New York. The candle still forming is never plotted. Daily candles are labelled by the
+trading day they cover, which is one day later than the date TradingView stamps on them.</p>
+<p><strong>Not advice.</strong> A screening view of relative strength, not a recommendation to trade.</p>
+</section>
+
+<div class="tip" id="tip" role="tooltip"></div>
+<script>
+const DATA = {"meta": {"generated": "2026-10-24 04:06", "tz": "Bangkok (UTC+7)", "ccy": ["USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD", "NZD"], "pairs": 28, "window": 60, "roc": 10, "tail": 2, "feed": "OANDA"}, "views": [{"key": "240", "label": "4H", "reach": "about 10 trading days", "bars": 400, "last": "2026-10-23 17:00-21:00 UTC", "periods": [{"key": "4H", "desc": "last 4H candle", "n": 1}, {"key": "24H", "desc": "last six 4H candles", "n": 6}], "heat": [{"key": "4H", "desc": "last 4H candle", "n": 1, "matrix": {"USD": {"EUR": -0.087, "GBP": -0.061, "JPY": -0.045, "CHF": -0.022, "CAD": 0.001, "AUD": -0.071, "NZD": -0.053}, "EUR": {"USD": 0.087, "GBP": 0.029, "JPY": 0.043, "CHF": 0.063, "CAD": 0.086, "AUD": 0.015, "NZD": 0.031}, "GBP": {"USD": 0.061, "EUR": -0.029, "JPY": 0.014, "CHF": 0.04, "CAD": 0.065, "AUD": -0.014, "NZD": 0.009}, "JPY": {"USD": 0.045, "EUR": -0.043, "GBP": -0.014, "CHF": 0.027, "CAD": 0.059, "AUD": -0.024, "NZD": -0.002}, "CHF": {"USD": 0.022, "EUR": -0.063, "GBP": -0.04, "JPY": -0.027, "CAD": 0.027, "AUD": -0.052, "NZD": -0.034}, "CAD": {"USD": -0.001, "EUR": -0.086, "GBP": -0.065, "JPY": -0.059, "CHF": -0.027, "AUD": -0.073, "NZD": -0.056}, "AUD": {"USD": 0.071, "EUR": -0.015, "GBP": 0.014, "JPY": 0.024, "CHF": 0.052, "CAD": 0.073, "NZD": 0.025}, "NZD": {"USD": 0.053, "EUR": -0.031, "GBP": -0.009, "JPY": 0.002, "CHF": 0.034, "CAD": 0.056, "AUD": -0.025}}, "strength": {"USD": -0.048, "EUR": 0.05, "GBP": 0.021, "JPY": 0.007, "CHF": -0.024, "CAD": -0.053, "AUD": 0.035, "NZD": 0.012}}, {"key": "24H", "desc": "last six 4H candles", "n": 6, "matrix": {"USD": {"EUR": 0.12, "GBP": 0.167, "JPY": 0.066, "CHF": 0.552, "CAD": -0.021, "AUD": -0.236, "NZD": -0.324}, "EUR": {"USD": -0.119, "GBP": 0.055, "JPY": -0.058, "CHF": 0.426, "CAD": -0.129, "AUD": -0.354, "NZD": -0.443}, "GBP": {"USD": -0.167, "EUR": -0.055, "JPY": -0.105, "CHF": 0.378, "CAD": -0.181, "AUD": -0.403, "NZD": -0.49}, "JPY": {"USD": -0.066, "EUR": 0.058, "GBP": 0.105, "CHF": 0.482, "CAD": -0.061, "AUD": -0.299, "NZD": -0.381}, "CHF": {"USD": -0.549, "EUR": -0.424, "GBP": -0.377, "JPY": -0.479, "CAD": -0.547, "AUD": -0.779, "NZD": -0.859}, "CAD": {"USD": 0.021, "EUR": 0.129, "GBP": 0.181, "JPY": 0.061, "CHF": 0.55, "AUD": -0.231, "NZD": -0.296}, "AUD": {"USD": 0.236, "EUR": 0.355, "GBP": 0.405, "JPY": 0.3, "CHF": 0.785, "CAD": 0.232, "NZD": -0.073}, "NZD": {"USD": 0.326, "EUR": 0.445, "GBP": 0.493, "JPY": 0.383, "CHF": 0.866, "CAD": 0.296, "AUD": 0.073}}, "strength": {"USD": 0.046, "EUR": -0.089, "GBP": -0.147, "JPY": -0.023, "CHF": -0.574, "CAD": 0.059, "AUD": 0.32, "NZD": 0.411}}], "ccy": [{"t": "USD", "n": "US dollar", "x": 98.688, "y": 100.654, "q": "Improving", "tail": [[98.364, 100.492], [98.748, 100.748], [98.688, 100.654]], "dx": 0.324, "dy": 0.162, "chg": [-0.048, 0.046], "level": 99.94}, {"t": "EUR", "n": "Euro", "x": 98.019, "y": 99.594, "q": "Lagging", "tail": [[97.552, 99.533], [97.754, 99.846], [98.019, 99.594]], "dx": 0.467, "dy": 0.061, "chg": [0.05, -0.089], "level": 97.87}, {"t": "GBP", "n": "Pound sterling", "x": 99.966, "y": 98.786, "q": "Lagging", "tail": [[99.748, 98.379], [99.873, 98.66], [99.966, 98.786]], "dx": 0.218, "dy": 0.407, "chg": [0.021, -0.147], "level": 100.02}, {"t": "JPY", "n": "Japanese yen", "x": 100.667, "y": 100.881, "q": "Leading", "tail": [[101.388, 101.909], [100.654, 101.451], [100.667, 100.881]], "dx": -0.721, "dy": -1.028, "chg": [0.007, -0.023], "level": 104.68}, {"t": "CHF", "n": "Swiss franc", "x": 99.095, "y": 98.927, "q": "Lagging", "tail": [[100.083, 100.033], [99.163, 99.475], [99.095, 98.927]], "dx": -0.988, "dy": -1.106, "chg": [-0.024, -0.574], "level": 98.53}, {"t": "CAD", "n": "Canadian dollar", "x": 101.363, "y": 99.671, "q": "Weakening", "tail": [[101.935, 100.305], [101.556, 99.928], [101.363, 99.671]], "dx": -0.572, "dy": -0.634, "chg": [-0.053, 0.059], "level": 100.51}, {"t": "AUD", "n": "Australian dollar", "x": 100.734, "y": 100.432, "q": "Leading", "tail": [[100.112, 99.735], [100.634, 100.021], [100.734, 100.432]], "dx": 0.622, "dy": 0.697, "chg": [0.035, 0.32], "level": 100.53}, {"t": "NZD", "n": "New Zealand dollar", "x": 101.332, "y": 99.994, "q": "Weakening", "tail": [[100.803, 98.989], [101.35, 99.274], [101.332, 99.994]], "dx": 0.529, "dy": 1.005, "chg": [0.012, 0.411], "level": 98.08}], "pairs": [{"t": "EURUSD", "n": "Euro / US dollar", "x": 99.801, "y": 98.189, "q": "Lagging", "tail": [[99.931, 98.521], [99.44, 98.095], [99.801, 98.189]], "dx": -0.13, "dy": -0.332, "chg": [0.087, -0.119], "base": "EUR", "quote": "USD", "level": 1.12032}, {"t": "EURGBP", "n": "Euro / Pound sterling", "x": 98.552, "y": 100.442, "q": "Improving", "tail": [[98.381, 100.712], [98.425, 100.664], [98.552, 100.442]], "dx": 0.171, "dy": -0.27, "chg": [0.029, 0.055], "base": "EUR", "quote": "GBP", "level": 0.8375}, {"t": "EURJPY", "n": "Euro / Japanese yen", "x": 97.987, "y": 98.968, "q": "Lagging", "tail": [[96.948, 97.635], [97.755, 98.173], [97.987, 98.968]], "dx": 1.039, "dy": 1.333, "chg": [0.043, -0.058], "base": "EUR", "quote": "JPY", "level": 175.74}, {"t": "EURCHF", "n": "Euro / Swiss franc", "x": 99.094, "y": 100.687, "q": "Improving", "tail": [[98.265, 99.569], [98.903, 100.228], [99.094, 100.687]], "dx": 0.829, "dy": 1.118, "chg": [0.063, 0.426], "base": "EUR", "quote": "CHF", "level": 0.92422}, {"t": "EURCAD", "n": "Euro / Canadian dollar", "x": 98.269, "y": 99.982, "q": "Lagging", "tail": [[97.739, 99.409], [98.045, 99.86], [98.269, 99.982]], "dx": 0.53, "dy": 0.573, "chg": [0.086, -0.129], "base": "EUR", "quote": "CAD", "level": 1.56907}, {"t": "EURAUD", "n": "Euro / Australian dollar", "x": 98.331, "y": 99.335, "q": "Lagging", "tail": [[98.5, 99.904], [98.233, 99.739], [98.331, 99.335]], "dx": -0.169, "dy": -0.569, "chg": [0.015, -0.354], "base": "EUR", "quote": "AUD", "level": 1.5922}, {"t": "EURNZD", "n": "Euro / New Zealand dollar", "x": 98.203, "y": 99.515, "q": "Lagging", "tail": [[98.297, 100.435], [98.062, 100.287], [98.203, 99.515]], "dx": -0.094, "dy": -0.92, "chg": [0.031, -0.443], "base": "EUR", "quote": "NZD", "level": 1.96486}, {"t": "GBPUSD", "n": "Pound sterling / US dollar", "x": 100.98, "y": 99.252, "q": "Weakening", "tail": [[101.133, 99.239], [100.895, 99.144], [100.98, 99.252]], "dx": -0.153, "dy": 0.013, "chg": [0.061, -0.167], "base": "GBP", "quote": "USD", "level": 1.33778}, {"t": "GBPJPY", "n": "Pound sterling / Japanese yen", "x": 99.509, "y": 98.909, "q": "Lagging", "tail": [[98.92, 97.934], [99.484, 98.416], [99.509, 98.909]], "dx": 0.589, "dy": 0.975, "chg": [0.014, -0.105], "base": "GBP", "quote": "JPY", "level": 209.842}, {"t": "GBPCHF", "n": "Pound sterling / Swiss franc", "x": 101.025, "y": 100.259, "q": "Leading", "tail": [[99.723, 98.756], [100.862, 99.586], [101.025, 100.259]], "dx": 1.302, "dy": 1.503, "chg": [0.04, 0.378], "base": "GBP", "quote": "CHF", "level": 1.10362}, {"t": "GBPCAD", "n": "Pound sterling / Canadian dollar", "x": 98.241, "y": 99.638, "q": "Lagging", "tail": [[97.228, 98.701], [97.882, 99.287], [98.241, 99.638]], "dx": 1.013, "dy": 0.937, "chg": [0.065, -0.181], "base": "GBP", "quote": "CAD", "level": 1.87367}, {"t": "GBPAUD", "n": "Pound sterling / Australian dollar", "x": 99.369, "y": 99.376, "q": "Lagging", "tail": [[99.805, 99.79], [99.426, 99.646], [99.369, 99.376]], "dx": -0.436, "dy": -0.414, "chg": [-0.014, -0.403], "base": "GBP", "quote": "AUD", "level": 1.90122}, {"t": "GBPNZD", "n": "Pound sterling / New Zealand dollar", "x": 98.07, "y": 99.168, "q": "Lagging", "tail": [[98.595, 100.459], [97.929, 100.252], [98.07, 99.168]], "dx": -0.525, "dy": -1.291, "chg": [0.009, -0.49], "base": "GBP", "quote": "NZD", "level": 2.34624}, {"t": "AUDUSD", "n": "Australian dollar / US dollar", "x": 101.603, "y": 99.92, "q": "Weakening", "tail": [[101.486, 99.531], [101.512, 99.565], [101.603, 99.92]], "dx": 0.117, "dy": 0.389, "chg": [0.071, 0.236], "base": "AUD", "quote": "USD", "level": 0.70362}, {"t": "AUDJPY", "n": "Australian dollar / Japanese yen", "x": 100.099, "y": 99.759, "q": "Weakening", "tail": [[99.186, 98.657], [100.038, 99.128], [100.099, 99.759]], "dx": 0.913, "dy": 1.102, "chg": [0.024, 0.3], "base": "AUD", "quote": "JPY", "level": 110.372}, {"t": "AUDCHF", "n": "Australian dollar / Swiss franc", "x": 100.844, "y": 100.584, "q": "Leading", "tail": [[100.032, 99.806], [100.753, 100.156], [100.844, 100.584]], "dx": 0.812, "dy": 0.778, "chg": [0.052, 0.785], "base": "AUD", "quote": "CHF", "level": 0.58048}, {"t": "AUDCAD", "n": "Australian dollar / Canadian dollar", "x": 99.655, "y": 100.44, "q": "Improving", "tail": [[98.907, 99.601], [99.481, 99.999], [99.655, 100.44]], "dx": 0.748, "dy": 0.839, "chg": [0.073, 0.232], "base": "AUD", "quote": "CAD", "level": 0.9855}, {"t": "AUDNZD", "n": "Australian dollar / New Zealand dollar", "x": 99.61, "y": 100.322, "q": "Improving", "tail": [[99.558, 100.396], [99.538, 100.444], [99.61, 100.322]], "dx": 0.052, "dy": -0.074, "chg": [0.025, -0.073], "base": "AUD", "quote": "NZD", "level": 1.2341}, {"t": "NZDUSD", "n": "New Zealand dollar / US dollar", "x": 101.365, "y": 99.697, "q": "Weakening", "tail": [[101.297, 99.287], [101.34, 99.284], [101.365, 99.697]], "dx": 0.068, "dy": 0.41, "chg": [0.053, 0.326], "base": "NZD", "quote": "USD", "level": 0.57018}, {"t": "NZDJPY", "n": "New Zealand dollar / Japanese yen", "x": 100.403, "y": 99.562, "q": "Weakening", "tail": [[99.742, 98.549], [100.416, 98.917], [100.403, 99.562]], "dx": 0.661, "dy": 1.013, "chg": [0.002, 0.383], "base": "NZD", "quote": "JPY", "level": 89.428}, {"t": "NZDCHF", "n": "New Zealand dollar / Swiss franc", "x": 102.091, "y": 100.779, "q": "Leading", "tail": [[100.808, 98.81], [102.098, 99.547], [102.091, 100.779]], "dx": 1.283, "dy": 1.969, "chg": [0.034, 0.866], "base": "NZD", "quote": "CHF", "level": 0.47034}, {"t": "NZDCAD", "n": "New Zealand dollar / Canadian dollar", "x": 100.143, "y": 100.251, "q": "Leading", "tail": [[98.394, 98.036], [99.847, 98.842], [100.143, 100.251]], "dx": 1.749, "dy": 2.215, "chg": [0.056, 0.296], "base": "NZD", "quote": "CAD", "level": 0.79856}, {"t": "USDJPY", "n": "US dollar / Japanese yen", "x": 98.078, "y": 100.446, "q": "Improving", "tail": [[97.007, 98.544], [98.102, 99.27], [98.078, 100.446]], "dx": 1.071, "dy": 1.902, "chg": [-0.045, 0.066], "base": "USD", "quote": "JPY", "level": 156.863}, {"t": "USDCHF", "n": "US dollar / Swiss franc", "x": 99.455, "y": 100.762, "q": "Improving", "tail": [[98.825, 100.226], [99.475, 100.601], [99.455, 100.762]], "dx": 0.63, "dy": 0.536, "chg": [-0.022, 0.552], "base": "USD", "quote": "CHF", "level": 0.82499}, {"t": "USDCAD", "n": "US dollar / Canadian dollar", "x": 98.617, "y": 100.649, "q": "Improving", "tail": [[98.171, 100.253], [98.565, 100.595], [98.617, 100.649]], "dx": 0.446, "dy": 0.396, "chg": [0.001, -0.021], "base": "USD", "quote": "CAD", "level": 1.40062}, {"t": "CADJPY", "n": "Canadian dollar / Japanese yen", "x": 100.406, "y": 99.246, "q": "Weakening", "tail": [[100.344, 98.796], [100.545, 98.951], [100.406, 99.246]], "dx": 0.062, "dy": 0.45, "chg": [-0.059, 0.061], "base": "CAD", "quote": "JPY", "level": 111.988}, {"t": "CADCHF", "n": "Canadian dollar / Swiss franc", "x": 102.067, "y": 100.565, "q": "Leading", "tail": [[101.939, 100.263], [102.252, 100.376], [102.067, 100.565]], "dx": 0.128, "dy": 0.302, "chg": [-0.027, 0.55], "base": "CAD", "quote": "CHF", "level": 0.58902}, {"t": "CHFJPY", "n": "Swiss franc / Japanese yen", "x": 99.01, "y": 98.84, "q": "Lagging", "tail": [[99.035, 98.585], [99.055, 98.649], [99.01, 98.84]], "dx": -0.025, "dy": 0.255, "chg": [-0.027, -0.479], "base": "CHF", "quote": "JPY", "level": 190.142}]}, {"key": "1D", "label": "Daily", "reach": "about 12 weeks", "bars": 400, "last": "2026-10-23", "periods": [{"key": "1D", "desc": "last daily candle", "n": 1}, {"key": "1W", "desc": "last five sessions", "n": 5}], "heat": [{"key": "1D", "desc": "last daily candle", "n": 1, "matrix": {"USD": {"EUR": 0.12, "GBP": 0.167, "JPY": 0.066, "CHF": 0.552, "CAD": -0.021, "AUD": -0.236, "NZD": -0.324}, "EUR": {"USD": -0.119, "GBP": 0.055, "JPY": -0.058, "CHF": 0.426, "CAD": -0.129, "AUD": -0.354, "NZD": -0.443}, "GBP": {"USD": -0.167, "EUR": -0.055, "JPY": -0.105, "CHF": 0.378, "CAD": -0.181, "AUD": -0.403, "NZD": -0.49}, "JPY": {"USD": -0.066, "EUR": 0.058, "GBP": 0.105, "CHF": 0.482, "CAD": -0.061, "AUD": -0.299, "NZD": -0.381}, "CHF": {"USD": -0.549, "EUR": -0.424, "GBP": -0.377, "JPY": -0.479, "CAD": -0.547, "AUD": -0.779, "NZD": -0.859}, "CAD": {"USD": 0.021, "EUR": 0.129, "GBP": 0.181, "JPY": 0.061, "CHF": 0.55, "AUD": -0.231, "NZD": -0.296}, "AUD": {"USD": 0.236, "EUR": 0.355, "GBP": 0.405, "JPY": 0.3, "CHF": 0.785, "CAD": 0.232, "NZD": -0.073}, "NZD": {"USD": 0.326, "EUR": 0.445, "GBP": 0.493, "JPY": 0.383, "CHF": 0.866, "CAD": 0.296, "AUD": 0.073}}, "strength": {"USD": 0.046, "EUR": -0.089, "GBP": -0.147, "JPY": -0.023, "CHF": -0.574, "CAD": 0.059, "AUD": 0.32, "NZD": 0.411}}, {"key": "1W", "desc": "last five sessions", "n": 5, "matrix": {"USD": {"EUR": 0.317, "GBP": -0.368, "JPY": -0.721, "CHF": 0.127, "CAD": -0.938, "AUD": -1.282, "NZD": -0.851}, "EUR": {"USD": -0.316, "GBP": -0.681, "JPY": -1.043, "CHF": -0.19, "CAD": -1.253, "AUD": -1.595, "NZD": -1.162}, "GBP": {"USD": 0.369, "EUR": 0.685, "JPY": -0.358, "CHF": 0.494, "CAD": -0.575, "AUD": -0.921, "NZD": -0.485}, "JPY": {"USD": 0.726, "EUR": 1.054, "GBP": 0.359, "CHF": 0.851, "CAD": -0.209, "AUD": -0.565, "NZD": -0.127}, "CHF": {"USD": -0.127, "EUR": 0.19, "GBP": -0.491, "JPY": -0.844, "CAD": -1.063, "AUD": -1.407, "NZD": -0.965}, "CAD": {"USD": 0.947, "EUR": 1.269, "GBP": 0.578, "JPY": 0.209, "CHF": 1.074, "AUD": -0.347, "NZD": 0.084}, "AUD": {"USD": 1.299, "EUR": 1.621, "GBP": 0.93, "JPY": 0.569, "CHF": 1.428, "CAD": 0.348, "NZD": 0.444}, "NZD": {"USD": 0.858, "EUR": 1.176, "GBP": 0.487, "JPY": 0.128, "CHF": 0.975, "CAD": -0.084, "AUD": -0.442}}, "strength": {"USD": -0.532, "EUR": -0.893, "GBP": -0.115, "JPY": 0.297, "CHF": -0.674, "CAD": 0.543, "AUD": 0.947, "NZD": 0.441}}], "ccy": [{"t": "USD", "n": "US dollar", "x": 100.562, "y": 99.102, "q": "Weakening", "tail": [[100.693, 98.984], [100.54, 99.02], [100.562, 99.102]], "dx": -0.131, "dy": 0.118, "chg": [0.046, -0.532], "level": 99.12}, {"t": "EUR", "n": "Euro", "x": 97.327, "y": 100.435, "q": "Improving", "tail": [[97.5, 100.79], [97.23, 100.332], [97.327, 100.435]], "dx": -0.173, "dy": -0.355, "chg": [-0.089, -0.893], "level": 99.14}, {"t": "GBP", "n": "Pound sterling", "x": 100.979, "y": 100.618, "q": "Leading", "tail": [[101.851, 101.606], [101.464, 101.144], [100.979, 100.618]], "dx": -0.872, "dy": -0.988, "chg": [-0.147, -0.115], "level": 102.69}, {"t": "JPY", "n": "Japanese yen", "x": 100.846, "y": 99.77, "q": "Weakening", "tail": [[100.357, 99.388], [100.885, 99.659], [100.846, 99.77]], "dx": 0.489, "dy": 0.382, "chg": [-0.023, 0.297], "level": 90.21}, {"t": "CHF", "n": "Swiss franc", "x": 99.454, "y": 99.175, "q": "Lagging", "tail": [[99.736, 100.403], [100.432, 101.312], [99.454, 99.175]], "dx": -0.282, "dy": -1.228, "chg": [-0.574, -0.674], "level": 98.96}, {"t": "CAD", "n": "Canadian dollar", "x": 101.975, "y": 102.138, "q": "Leading", "tail": [[101.406, 101.634], [101.857, 101.544], [101.975, 102.138]], "dx": 0.569, "dy": 0.504, "chg": [0.059, 0.543], "level": 98.94}, {"t": "AUD", "n": "Australian dollar", "x": 100.154, "y": 99.733, "q": "Weakening", "tail": [[100.175, 99.997], [99.652, 99.808], [100.154, 99.733]], "dx": -0.021, "dy": -0.264, "chg": [0.32, 0.947], "level": 114.04}, {"t": "NZD", "n": "New Zealand dollar", "x": 99.434, "y": 101.279, "q": "Improving", "tail": [[99.445, 101.606], [99.134, 101.186], [99.434, 101.279]], "dx": -0.011, "dy": -0.327, "chg": [0.411, 0.441], "level": 98.38}], "pairs": [{"t": "EURUSD", "n": "Euro / US dollar", "x": 98.545, "y": 100.598, "q": "Improving", "tail": [[98.609, 100.839], [98.567, 100.635], [98.545, 100.598]], "dx": -0.064, "dy": -0.241, "chg": [-0.119, -0.316], "base": "EUR", "quote": "USD", "level": 1.12032}, {"t": "EURGBP", "n": "Euro / Pound sterling", "x": 97.434, "y": 100.324, "q": "Improving", "tail": [[97.166, 100.052], [97.149, 100.004], [97.434, 100.324]], "dx": 0.268, "dy": 0.272, "chg": [0.055, -0.681], "base": "EUR", "quote": "GBP", "level": 0.8375}, {"t": "EURJPY", "n": "Euro / Japanese yen", "x": 98.461, "y": 100.126, "q": "Improving", "tail": [[98.945, 100.477], [98.432, 100.211], [98.461, 100.126]], "dx": -0.484, "dy": -0.351, "chg": [-0.058, -1.043], "base": "EUR", "quote": "JPY", "level": 175.74}, {"t": "EURCHF", "n": "Euro / Swiss franc", "x": 97.984, "y": 99.918, "q": "Lagging", "tail": [[98.106, 99.266], [97.271, 98.55], [97.984, 99.918]], "dx": -0.122, "dy": 0.652, "chg": [0.426, -0.19], "base": "EUR", "quote": "CHF", "level": 0.92422}, {"t": "EURCAD", "n": "Euro / Canadian dollar", "x": 96.871, "y": 99.454, "q": "Lagging", "tail": [[97.058, 99.846], [96.727, 99.728], [96.871, 99.454]], "dx": -0.187, "dy": -0.392, "chg": [-0.129, -1.253], "base": "EUR", "quote": "CAD", "level": 1.56907}, {"t": "EURAUD", "n": "Euro / Australian dollar", "x": 97.749, "y": 99.926, "q": "Lagging", "tail": [[98.055, 99.932], [98.107, 99.687], [97.749, 99.926]], "dx": -0.306, "dy": -0.006, "chg": [-0.354, -1.595], "base": "EUR", "quote": "AUD", "level": 1.5922}, {"t": "EURNZD", "n": "Euro / New Zealand dollar", "x": 99.053, "y": 98.064, "q": "Lagging", "tail": [[99.364, 97.916], [99.518, 98.165], [99.053, 98.064]], "dx": -0.311, "dy": 0.148, "chg": [-0.443, -1.162], "base": "EUR", "quote": "NZD", "level": 1.96486}, {"t": "GBPUSD", "n": "Pound sterling / US dollar", "x": 99.712, "y": 100.93, "q": "Improving", "tail": [[99.809, 101.244], [99.861, 101.114], [99.712, 100.93]], "dx": -0.097, "dy": -0.314, "chg": [-0.167, 0.369], "base": "GBP", "quote": "USD", "level": 1.33778}, {"t": "GBPJPY", "n": "Pound sterling / Japanese yen", "x": 99.42, "y": 100.339, "q": "Improving", "tail": [[100.013, 100.848], [99.476, 100.507], [99.42, 100.339]], "dx": -0.593, "dy": -0.509, "chg": [-0.105, -0.358], "base": "GBP", "quote": "JPY", "level": 209.842}, {"t": "GBPCHF", "n": "Pound sterling / Swiss franc", "x": 101.227, "y": 101.377, "q": "Leading", "tail": [[101.361, 100.766], [100.42, 99.403], [101.227, 101.377]], "dx": -0.134, "dy": 0.611, "chg": [0.378, 0.494], "base": "GBP", "quote": "CHF", "level": 1.10362}, {"t": "GBPCAD", "n": "Pound sterling / Canadian dollar", "x": 99.192, "y": 98.331, "q": "Lagging", "tail": [[100.344, 99.735], [99.684, 99.388], [99.192, 98.331]], "dx": -1.152, "dy": -1.404, "chg": [-0.181, -0.575], "base": "GBP", "quote": "CAD", "level": 1.87367}, {"t": "GBPAUD", "n": "Pound sterling / Australian dollar", "x": 100.287, "y": 100.504, "q": "Leading", "tail": [[100.586, 100.654], [100.843, 100.638], [100.287, 100.504]], "dx": -0.299, "dy": -0.15, "chg": [-0.403, -0.921], "base": "GBP", "quote": "AUD", "level": 1.90122}, {"t": "GBPNZD", "n": "Pound sterling / New Zealand dollar", "x": 100.803, "y": 98.761, "q": "Weakening", "tail": [[100.979, 98.655], [101.232, 98.987], [100.803, 98.761]], "dx": -0.176, "dy": 0.106, "chg": [-0.49, -0.485], "base": "GBP", "quote": "NZD", "level": 2.34624}, {"t": "AUDUSD", "n": "Australian dollar / US dollar", "x": 99.587, "y": 100.605, "q": "Improving", "tail": [[99.495, 100.771], [99.394, 100.701], [99.587, 100.605]], "dx": 0.092, "dy": -0.166, "chg": [0.236, 1.299], "base": "AUD", "quote": "USD", "level": 0.70362}, {"t": "AUDJPY", "n": "Australian dollar / Japanese yen", "x": 99.227, "y": 100.204, "q": "Improving", "tail": [[99.711, 100.72], [99.005, 100.357], [99.227, 100.204]], "dx": -0.484, "dy": -0.516, "chg": [0.3, 0.569], "base": "AUD", "quote": "JPY", "level": 110.372}, {"t": "AUDCHF", "n": "Australian dollar / Swiss franc", "x": 100.397, "y": 100.372, "q": "Leading", "tail": [[100.243, 99.996], [99.555, 99.394], [100.397, 100.372]], "dx": 0.154, "dy": 0.376, "chg": [0.785, 1.428], "base": "AUD", "quote": "CHF", "level": 0.58048}, {"t": "AUDCAD", "n": "Australian dollar / Canadian dollar", "x": 99.066, "y": 98.492, "q": "Lagging", "tail": [[99.422, 99.091], [98.616, 98.926], [99.066, 98.492]], "dx": -0.356, "dy": -0.599, "chg": [0.232, 0.348], "base": "AUD", "quote": "CAD", "level": 0.9855}, {"t": "AUDNZD", "n": "Australian dollar / New Zealand dollar", "x": 100.543, "y": 98.995, "q": "Weakening", "tail": [[100.521, 98.884], [100.618, 99.108], [100.543, 98.995]], "dx": 0.022, "dy": 0.111, "chg": [-0.073, 0.444], "base": "AUD", "quote": "NZD", "level": 1.2341}, {"t": "NZDUSD", "n": "New Zealand dollar / US dollar", "x": 99.404, "y": 101.143, "q": "Improving", "tail": [[99.35, 101.383], [99.235, 101.143], [99.404, 101.143]], "dx": 0.054, "dy": -0.24, "chg": [0.326, 0.858], "base": "NZD", "quote": "USD", "level": 0.57018}, {"t": "NZDJPY", "n": "New Zealand dollar / Japanese yen", "x": 99.273, "y": 100.548, "q": "Improving", "tail": [[99.521, 100.899], [99.103, 100.591], [99.273, 100.548]], "dx": -0.248, "dy": -0.351, "chg": [0.383, 0.128], "base": "NZD", "quote": "JPY", "level": 89.428}, {"t": "NZDCHF", "n": "New Zealand dollar / Swiss franc", "x": 99.532, "y": 102.647, "q": "Improving", "tail": [[99.388, 102.825], [98.636, 101.671], [99.532, 102.647]], "dx": 0.144, "dy": -0.178, "chg": [0.866, 0.975], "base": "NZD", "quote": "CHF", "level": 0.47034}, {"t": "NZDCAD", "n": "New Zealand dollar / Canadian dollar", "x": 99.011, "y": 100.551, "q": "Improving", "tail": [[99.161, 100.955], [98.757, 100.63], [99.011, 100.551]], "dx": -0.15, "dy": -0.404, "chg": [0.296, -0.084], "base": "NZD", "quote": "CAD", "level": 0.79856}, {"t": "USDJPY", "n": "US dollar / Japanese yen", "x": 99.461, "y": 99.81, "q": "Lagging", "tail": [[100.207, 100.422], [99.391, 99.917], [99.461, 99.81]], "dx": -0.746, "dy": -0.612, "chg": [0.066, -0.721], "base": "USD", "quote": "JPY", "level": 156.863}, {"t": "USDCHF", "n": "US dollar / Swiss franc", "x": 100.645, "y": 99.334, "q": "Weakening", "tail": [[100.63, 98.889], [100.244, 98.796], [100.645, 99.334]], "dx": 0.015, "dy": 0.445, "chg": [0.552, 0.127], "base": "USD", "quote": "CHF", "level": 0.82499}, {"t": "USDCAD", "n": "US dollar / Canadian dollar", "x": 100.005, "y": 98.642, "q": "Weakening", "tail": [[100.275, 98.66], [100.024, 98.725], [100.005, 98.642]], "dx": -0.27, "dy": -0.018, "chg": [-0.021, -0.938], "base": "USD", "quote": "CAD", "level": 1.40062}, {"t": "CADJPY", "n": "Canadian dollar / Japanese yen", "x": 99.583, "y": 100.504, "q": "Improving", "tail": [[99.928, 100.811], [99.536, 100.533], [99.583, 100.504]], "dx": -0.345, "dy": -0.307, "chg": [0.061, 0.209], "base": "CAD", "quote": "JPY", "level": 111.988}, {"t": "CADCHF", "n": "Canadian dollar / Swiss franc", "x": 101.415, "y": 102.349, "q": "Leading", "tail": [[100.836, 100.941], [100.515, 100.449], [101.415, 102.349]], "dx": 0.579, "dy": 1.408, "chg": [0.55, 1.074], "base": "CAD", "quote": "CHF", "level": 0.58902}, {"t": "CHFJPY", "n": "Swiss franc / Japanese yen", "x": 99.195, "y": 99.974, "q": "Lagging", "tail": [[99.64, 100.507], [99.442, 100.315], [99.195, 99.974]], "dx": -0.445, "dy": -0.533, "chg": [-0.479, -0.844], "base": "CHF", "quote": "JPY", "level": 190.142}]}]};
+const VIEWS = DATA.views, CCY = DATA.meta.ccy, WINDOW = DATA.meta.window;
+
+const $ = s => document.querySelector(s);
+const NS = 'http://www.w3.org/2000/svg';
+const S = 560, M = {t:28, r:32, b:44, l:50};
+const QS = ['Leading','Weakening','Lagging','Improving'];
+const state = {tf:0, per:0, mode:'ccy', ccy:null, q:new Set(QS), labels:true, sort:'t', dir:1};
+const view = () => VIEWS[state.tf];
+const fmt = v => (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v).toFixed(2);
+const tip = $('#tip');
+function showTip(html, e){ tip.innerHTML = html; tip.style.opacity = 1; moveTip(e); }
+function moveTip(e){ tip.style.left = (e.clientX + 14) + 'px'; tip.style.top = (e.clientY + 12) + 'px'; }
+function hideTip(){ tip.style.opacity = 0; }
+
+/* ---------- OKLab interpolation for the diverging ramp ---------- */
+const lin = c => c <= 0.04045 ? c/12.92 : Math.pow((c+0.055)/1.055, 2.4);
+const gam = c => c <= 0.0031308 ? 12.92*c : 1.055*Math.pow(c, 1/2.4) - 0.055;
+function hex(h){ h = h.trim().replace('#',''); if (h.length === 3) h = h.split('').map(c=>c+c).join('');
+  const n = parseInt(h,16); return [(n>>16)&255,(n>>8)&255,n&255].map(v=>v/255); }
+function toLab(rgb){ const [r,g,b] = rgb.map(lin);
+  const l = Math.cbrt(0.4122214708*r+0.5363325363*g+0.0514459929*b),
+        m = Math.cbrt(0.2119034982*r+0.6806995451*g+0.1073969566*b),
+        s = Math.cbrt(0.0883024619*r+0.2817188376*g+0.6299787005*b);
+  return [0.2104542553*l+0.7936177850*m-0.0040720468*s,
+          1.9779984951*l-2.4285922050*m+0.4505937099*s,
+          0.0259040371*l+0.7827717662*m-0.8086757660*s]; }
+function fromLab([L,a,b]){ const l=(L+0.3963377774*a+0.2158037573*b)**3,
+  m=(L-0.1055613458*a-0.0638541728*b)**3, s=(L-0.0894841775*a-1.2914855480*b)**3;
+  return [4.0767416621*l-3.3077115913*m+0.2309699292*s,
+          -1.2684380046*l+2.6097574011*m-0.3413193965*s,
+          -0.0041960863*l-0.7034186147*m+1.7076147010*s].map(v=>Math.min(1,Math.max(0,gam(v)))); }
+function tokens(){ const cs = getComputedStyle(document.documentElement);
+  return {pos:toLab(hex(cs.getPropertyValue('--div-pos'))), neg:toLab(hex(cs.getPropertyValue('--div-neg'))),
+          mid:toLab(hex(cs.getPropertyValue('--div-mid')))}; }
+function divColor(v, max, T){
+  const t = Math.min(1, Math.abs(v)/(max || 1)), pole = v >= 0 ? T.pos : T.neg;
+  const rgb = fromLab(T.mid.map((m,i) => m + (pole[i]-m)*t));
+  const Y = 0.2126*lin(rgb[0]) + 0.7152*lin(rgb[1]) + 0.0722*lin(rgb[2]);
+  const ink = (1.05/(Y+0.05)) > ((Y+0.05)/0.0535) ? '#ffffff' : '#0b0b0b';
+  return {bg:'rgb(' + rgb.map(c=>Math.round(c*255)).join(',') + ')', ink};
+}
+
+/* ---------------------------- heat map ---------------------------- */
+function heat(){
+  const v = view(), h = v.heat[state.per], T = tokens();
+  $('#heatdesc').textContent = `% change over the ${h.desc}. Read across: each cell is the row currency priced in the column currency.`;
+  let max = 0;
+  for (const a of CCY) for (const b of CCY) if (a !== b) max = Math.max(max, Math.abs(h.matrix[a][b]));
+  let html = '<thead><tr><th></th>' + CCY.map(c => `<th scope="col">${c}</th>`).join('') + '</tr></thead><tbody>';
+  for (const a of CCY){
+    html += `<tr><th scope="row" class="row">${a}</th>`;
+    for (const b of CCY){
+      if (a === b){ html += '<td class="diag">&middot;</td>'; continue; }
+      const val = h.matrix[a][b], c = divColor(val, max, T);
+      html += `<td style="background:${c.bg};color:${c.ink}" data-a="${a}" data-b="${b}" data-v="${val}">${fmt(val)}</td>`;
+    }
+    html += '</tr>';
+  }
+  $('#heat').innerHTML = html + '</tbody>';
+  $('#heat').querySelectorAll('td[data-a]').forEach(td => {
+    td.onmousemove = e => showTip(`<strong>${td.dataset.a}/${td.dataset.b}</strong> ${fmt(+td.dataset.v)}%<br>` +
+      `${td.dataset.a} ${+td.dataset.v >= 0 ? 'rose' : 'fell'} against ${td.dataset.b} over the ${h.desc}`, e);
+    td.onmouseleave = hideTip;
+  });
+  const st = Object.entries(h.strength).sort((x,y) => y[1]-x[1]);
+  const smax = Math.max(...st.map(([,x]) => Math.abs(x))) || 1;
+  $('#strength').innerHTML = st.map(([c,x]) =>
+    `<div class="row"><span class="lab">${c}</span><span class="track"><span class="zero"></span>` +
+    `<span class="fill ${x >= 0 ? 'pos' : 'neg'}" style="width:${(Math.abs(x)/smax*50).toFixed(2)}%"></span></span>` +
+    `<span class="val">${fmt(x)}%</span></div>`).join('');
+  const lo = divColor(-1,1,T).bg, mid = divColor(0,1,T).bg, hi = divColor(1,1,T).bg;
+  $('#ramp').style.background = `linear-gradient(90deg, ${lo}, ${mid}, ${hi})`;
+  $('#rampmax').textContent = max.toFixed(2) + '%';
+}
+
+/* ------------------------------ RRG ------------------------------- */
+const el = (n,a) => { const e = document.createElementNS(NS,n); for (const k in a) e.setAttribute(k,a[k]); return e; };
+function universe(){
+  const v = view();
+  if (state.mode === 'ccy') return v.ccy.map(p => ({...p, side:''}));
+  let pts = v.pairs.map(p => ({...p, side:''}));
+  if (state.ccy) pts = pts.filter(p => p.base === state.ccy || p.quote === state.ccy)
+                         .map(p => ({...p, side: p.base === state.ccy ? 'base' : 'quote'}));
+  return pts;
+}
+const visible = () => universe().filter(r => state.q.has(r.q));
+function domain(pts){ let lo = 100, hi = 100;
+  for (const r of pts) for (const [a,b] of r.tail){ lo = Math.min(lo,a,b); hi = Math.max(hi,a,b); }
+  const half = Math.max(hi-100, 100-lo)*1.1 || 2; return {lo:100-half, hi:100+half}; }
+
+function draw(){
+  const svg = $('#plot'); svg.textContent = '';
+  const all = universe(), rows = visible(), D = domain(all);
+  const px = v => M.l + (v-D.lo)/(D.hi-D.lo)*(S-M.l-M.r);
+  const py = v => S - M.b - (v-D.lo)/(D.hi-D.lo)*(S-M.t-M.b);
+  const L = M.l, R = S-M.r, T = M.t, B = S-M.b, x0 = px(100), y0 = py(100);
+  for (const [x,y,w,h,f] of [[x0,T,R-x0,y0-T,'--q-lead'],[x0,y0,R-x0,B-y0,'--q-weak'],[L,y0,x0-L,B-y0,'--q-lag'],[L,T,x0-L,y0-T,'--q-imp']])
+    svg.appendChild(el('rect',{x,y,width:Math.max(0,w),height:Math.max(0,h),fill:`var(${f})`}));
+  for (const [tx,ty,an,tt] of [[R-6,T+14,'end','Leading'],[R-6,B-8,'end','Weakening'],[L+6,B-8,'start','Lagging'],[L+6,T+14,'start','Improving']]){
+    const t = el('text',{x:tx,y:ty,class:'qlabel','text-anchor':an}); t.textContent = tt; svg.appendChild(t); }
+  const span = D.hi-D.lo, step = span > 12 ? 4 : span > 6 ? 2 : span > 3 ? 1 : 0.5;
+  for (let v = Math.ceil(D.lo/step)*step; v <= D.hi; v += step){
+    svg.appendChild(el('line',{x1:px(v),y1:T,x2:px(v),y2:B,stroke:'var(--grid)','stroke-width':1}));
+    svg.appendChild(el('line',{x1:L,y1:py(v),x2:R,y2:py(v),stroke:'var(--grid)','stroke-width':1}));
+    const lab = +v.toFixed(1);
+    const a = el('text',{x:px(v),y:B+16,class:'axlabel','text-anchor':'middle'}); a.textContent = lab; svg.appendChild(a);
+    const b = el('text',{x:L-8,y:py(v)+4,class:'axlabel','text-anchor':'end'}); b.textContent = lab; svg.appendChild(b);
+  }
+  svg.appendChild(el('line',{x1:x0,y1:T,x2:x0,y2:B,stroke:'var(--axis)','stroke-width':1.5}));
+  svg.appendChild(el('line',{x1:L,y1:y0,x2:R,y2:y0,stroke:'var(--axis)','stroke-width':1.5}));
+  const xt = el('text',{x:(L+R)/2,y:S-8,class:'axtitle','text-anchor':'middle'});
+  xt.textContent = state.mode === 'ccy' ? 'RS-Ratio  (currency index vs the G10 basket)' : 'RS-Ratio  (pair vs its own 60-bar norm)';
+  svg.appendChild(xt);
+  const yt = el('text',{x:12,y:(T+B)/2,class:'axtitle','text-anchor':'middle',transform:`rotate(-90 12 ${(T+B)/2})`});
+  yt.textContent = 'RS-Momentum'; svg.appendChild(yt);
+  const per = view().periods;
+  for (const r of rows){
+    svg.appendChild(el('polyline',{points:r.tail.map(([a,b]) => `${px(a)},${py(b)}`).join(' '),
+      fill:'none',stroke:'var(--mark-tail)','stroke-width':2,'stroke-linecap':'round','stroke-linejoin':'round'}));
+    const hollow = r.side === 'quote';
+    const dot = el('circle', hollow
+      ? {cx:px(r.x),cy:py(r.y),r:4.3,fill:'var(--surface-1)',stroke:'var(--mark)','stroke-width':2}
+      : {cx:px(r.x),cy:py(r.y),r:4.5,fill:'var(--mark)',stroke:'var(--surface-1)','stroke-width':2});
+    const hit = el('circle',{cx:px(r.x),cy:py(r.y),r:11,fill:'transparent'});
+    hit.onmousemove = e => showTip(`<strong>${r.t}</strong> &middot; ${r.q}<br>${r.n}<br>` +
+      `RS-Ratio ${r.x.toFixed(2)} &middot; Mom ${r.y.toFixed(2)}<br>` +
+      per.map((p,i) => `${p.key} ${fmt(r.chg[i])}%`).join(' &middot; ') +
+      (r.side ? `<br><span style="opacity:.75">${state.ccy} is the ${r.side} leg</span>` : ''), e);
+    hit.onmouseleave = hideTip;
+    svg.appendChild(dot); svg.appendChild(hit);
+    if (state.labels){ const lb = el('text',{x:px(r.x)+8,y:py(r.y)-7,class:'mlabel'}); lb.textContent = r.t; svg.appendChild(lb); }
+  }
+}
+
+function table(){
+  const per = view().periods, sided = state.mode === 'pairs' && state.ccy;
+  $('#thead').innerHTML = '<tr><th data-k="t">Name</th>' + (sided ? '<th data-k="side">Side</th>' : '') +
+    '<th data-k="q">Quadrant</th><th data-k="x">RS-Ratio</th><th data-k="y">RS-Mom</th>' +
+    '<th data-k="dx">&Delta; Ratio</th><th data-k="dy">&Delta; Mom</th>' +
+    per.map((p,i) => `<th data-k="c${i}">${p.key} %</th>`).join('') + '</tr>';
+  $('#thead').querySelectorAll('th').forEach(th => th.onclick = () => {
+    state.dir = state.sort === th.dataset.k ? -state.dir : 1; state.sort = th.dataset.k; table(); });
+  const key = r => state.sort.startsWith('c') ? r.chg[+state.sort.slice(1)] : r[state.sort];
+  const rows = visible().slice().sort((a,b) => { const va = key(a), vb = key(b);
+    return (typeof va === 'string' ? va.localeCompare(vb) : va - vb) * state.dir; });
+  $('#tbody').innerHTML = rows.map(r => `<tr title="${r.n}"><td><strong>${r.t}</strong></td>` +
+    (sided ? `<td class="q">${r.side}</td>` : '') + `<td class="q">${r.q}</td>` +
+    `<td class="num">${r.x.toFixed(2)}</td><td class="num">${r.y.toFixed(2)}</td>` +
+    `<td class="num">${fmt(r.dx)}</td><td class="num">${fmt(r.dy)}</td>` +
+    r.chg.map(c => `<td class="num">${fmt(c)}</td>`).join('') + '</tr>').join('');
+}
+
+function chips(){
+  const c = $('#qchips'); c.textContent = '';
+  const all = universe();
+  for (const q of QS){
+    const b = document.createElement('button');
+    b.className = 'chip'; b.setAttribute('aria-pressed', state.q.has(q));
+    b.innerHTML = `${q}<span class="n">${all.filter(r => r.q === q).length}</span>`;
+    b.onclick = () => { state.q.has(q) ? state.q.delete(q) : state.q.add(q); rrg(); };
+    c.appendChild(b);
+  }
+  const f = $('#ccychips'); f.textContent = '';
+  f.style.display = state.mode === 'pairs' ? '' : 'none';
+  for (const k of [null, ...CCY]){
+    const b = document.createElement('button');
+    b.className = 'chip' + (state.ccy === k ? ' sel' : '');
+    b.setAttribute('aria-pressed', state.ccy === k ? 'true' : 'mixed');
+    b.textContent = k || 'All pairs';
+    b.onclick = () => { state.ccy = k; state.q = new Set(QS); rrg(); };
+    f.appendChild(b);
+  }
+  const sn = $('#sidenote');
+  if (state.mode === 'pairs' && state.ccy){
+    sn.style.display = 'block';
+    sn.innerHTML = `<strong>Hollow marks read backwards.</strong> Where ${state.ccy} is the quote leg, ` +
+      `a pair in Leading means ${state.ccy} is <em>losing</em> ground to the other currency.`;
+  } else sn.style.display = 'none';
+  $('#sideleg').style.display = (state.mode === 'pairs' && state.ccy) ? '' : 'none';
+}
+function rrg(){ chips(); draw(); table(); }
+
+function status(){
+  const v = view();
+  $('#status').textContent = `last completed ${v.label} candle ${v.last} · ${v.bars} bars · ${WINDOW}-bar window ≈ ${v.reach}`;
+  const ps = $('#perseg'); ps.textContent = '';
+  v.periods.forEach((p,i) => { const b = document.createElement('button');
+    b.textContent = p.key; b.setAttribute('aria-selected', i === state.per);
+    b.onclick = () => { state.per = i; status(); heat(); }; ps.appendChild(b); });
+}
+function all(){ status(); heat(); rrg(); }
+
+function seg(id, items, get, set){
+  const s = $(id); s.textContent = '';
+  items.forEach(([val,label]) => { const b = document.createElement('button');
+    b.textContent = label; b.setAttribute('aria-selected', get() === val);
+    b.onclick = () => { set(val); [...s.children].forEach(c => c.setAttribute('aria-selected', c === b)); };
+    s.appendChild(b); });
+}
+seg('#tfseg', VIEWS.map((v,i) => [i, v.label]), () => state.tf, v => { state.tf = v; state.per = 0; state.q = new Set(QS); all(); });
+seg('#modeseg', [['ccy','Currencies'],['pairs','Pairs']], () => state.mode, v => { state.mode = v; state.ccy = null; state.q = new Set(QS); rrg(); });
+$('#lbl').onclick = e => { state.labels = !state.labels; e.target.setAttribute('aria-pressed', state.labels); draw(); };
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', heat);
+all();
+
+</script>
+</body>
+</html>
