@@ -1,0 +1,127 @@
+# Forex Rotation dashboard, refreshed after every 4H candle on GitHub's servers
+# (laptop on or off). Publishes https://pridil.github.io/forex-rrg-dashboard/.
+#
+# Bars: OANDA's 28 crosses from TradingView's public chart websocket
+# (fetch_bars_ws.mjs). Same numbers as the old laptop pipeline, which read them off a
+# private TradingView Desktop: on 2026-10-30 all 11,172 bars per timeframe matched
+# exactly.
+#
+# WHEN: every hour at :07. OANDA's 4H candles close every 4 hours on a grid that
+# shifts an hour with New York DST (01/05/09/13/17/21 UTC in summer, 02/06/... in
+# winter), so an hourly run never has to know which; it publishes only when the last
+# completed 4H candle differs from the one on the live page (stamp.txt). GitHub may
+# start scheduled runs late or skip them - the next hour simply catches up. A manual
+# run (or an external workflow_dispatch call) with force=true always publishes.
+#
+# Market shut (Fri 17:10 to Sun 17:00 New York): skipped before anything is fetched.
+# Fails (red run + GitHub email) on a fetch/build error or a privacy-scan flag;
+# nothing is published then, and the page keeps its last good build.
+name: Forex RRG 4H
+on:
+  schedule:
+    - cron: "7 * * * *"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Publish even if the 4H candle has not moved"
+        type: boolean
+        default: false
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: forex-rrg-pages
+  cancel-in-progress: false
+env:
+  TZ: Asia/Bangkok              # page's "generated" time is Bangkok
+  PYTHONIOENCODING: utf-8
+  FX_FETCHER: fetch_bars_ws.mjs
+  NODE_EXE: node
+  PAGES_URL: https://pridil.github.io/forex-rrg-dashboard/
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      publish: ${{ steps.guard.outputs.publish }}
+      stamp: ${{ steps.guard.outputs.stamp }}
+    steps:
+      - name: Market open?
+        id: market
+        run: |
+          # FX week: Sunday 17:00 to Friday 17:00 New York. The Friday 17:00 candle
+          # close still needs one run, hence 17:10.
+          read dow hm < <(TZ=America/New_York date '+%u %H%M')
+          if [ $dow -eq 6 ] || { [ $dow -eq 5 ] && [ $hm -ge 1710 ]; } || { [ $dow -eq 7 ] && [ $hm -lt 1700 ]; }; then
+            if [ "${{ inputs.force }}" != "true" ]; then
+              echo "open=false" >> "$GITHUB_OUTPUT"; echo "FX market shut (NY dow=$dow $hm) - nothing to do"; exit 0
+            fi
+          fi
+          echo "open=true" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        if: steps.market.outputs.open == 'true'
+      - uses: actions/setup-node@v4
+        if: steps.market.outputs.open == 'true'
+        with: { node-version: "24" }
+      - uses: actions/setup-python@v5
+        if: steps.market.outputs.open == 'true'
+        with: { python-version: "3.13" }
+      - if: steps.market.outputs.open == 'true'
+        run: pip install -r requirements.txt
+
+      - name: Build (fresh bars; one retry on failure)
+        if: steps.market.outputs.open == 'true'
+        run: python build.py --refresh || { echo "build failed - retrying in 60 s"; sleep 60; python build.py --refresh; }
+
+      - name: New 4H candle?
+        id: guard
+        if: steps.market.outputs.open == 'true'
+        run: |
+          stamp=$(cat built_4h_bar.txt)
+          live=$(curl -sf "${PAGES_URL}stamp.txt?v=$RANDOM$RANDOM" || true)
+          echo "built: '$stamp'   live: '$live'"
+          echo "stamp=$stamp" >> "$GITHUB_OUTPUT"
+          if [ "$stamp" = "$live" ] && [ "${{ inputs.force }}" != "true" ]; then
+            echo "publish=false" >> "$GITHUB_OUTPUT"; echo "No new 4H candle - not publishing."
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Privacy scan
+        if: steps.guard.outputs.publish == 'true'
+        run: python tools/privacy_scan.py forex_rrg.html
+
+      - name: Assemble the Pages site
+        if: steps.guard.outputs.publish == 'true'
+        run: |
+          mkdir -p site
+          cp forex_rrg.html site/index.html
+          cp built_4h_bar.txt site/stamp.txt
+          touch site/.nojekyll
+          ls -la site
+
+      - uses: actions/upload-pages-artifact@v3
+        if: steps.guard.outputs.publish == 'true'
+        with: { path: site }
+
+  deploy:
+    needs: build
+    if: needs.build.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.pages.outputs.page_url }}
+    steps:
+      - id: pages
+        uses: actions/deploy-pages@v4
+      - name: Confirm the live page shows this candle
+        run: |
+          # Pages caches can hold the old page ~10 minutes.
+          want="${{ needs.build.outputs.stamp }}"
+          for i in $(seq 1 30); do
+            [ "$(curl -sf "${PAGES_URL}stamp.txt?v=$RANDOM$RANDOM")" = "$want" ] && { echo "OK: live page is at '$want'"; exit 0; }
+            sleep 20
+          done
+          echo "::error::live page did not reach '$want' within 10 minutes"; exit 1
